@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cơn mưa yêu thương</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;font-family:"Bradley Hand ITC","Bradley Hand","Segoe Script","Comic Sans MS","Apple Chancery",cursive;font-weight:400}
+  canvas{display:block;touch-action:none}
+  #story,#intro{position:fixed;inset:0}
+  #story{display:none;background:#000;z-index:4;pointer-events:none}
+  #intro{background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:5}
+  button{font:inherit;cursor:pointer;color:#fff;border:1.5px solid #ff6b9a;background:rgba(255,60,120,.12);
+    border-radius:999px;box-shadow:0 0 18px #ff3d7f88,inset 0 0 12px #ff3d7f55;text-shadow:0 0 8px #ff8fb5;-webkit-tap-highlight-color:transparent}
+  button:active{transform:scale(.96)}
+  #b1{font-size:24px;padding:18px 38px;animation:pulse 1.8s ease-in-out infinite}
+  #b2{font-size:15px;padding:9px 20px}
+  #step2{display:none;flex-direction:column;align-items:center;gap:10px}
+  #b3{font-size:14px;color:#ffffffaa;letter-spacing:1px;cursor:pointer}
+  @keyframes pulse{50%{box-shadow:0 0 34px #ff3d7fcc,inset 0 0 16px #ff3d7f88}}
+  .pick{font-size:13px;color:#ffffff88;cursor:pointer}
+  #pick0{position:absolute;left:0;right:0;bottom:calc(22px + env(safe-area-inset-bottom,0px));text-align:center}
+  #skip{position:fixed;right:16px;bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:6;display:none;font-size:13px;padding:6px 14px;opacity:.7}
+  #hint{position:fixed;left:0;right:0;bottom:calc(24px + env(safe-area-inset-bottom,0px));text-align:center;font-size:15px;color:#ffffffbb;letter-spacing:.5px;pointer-events:none;opacity:0;transition:opacity 1.5s;z-index:2}
+  /* bảng chỉnh nhạc */
+  #mus{position:fixed;top:calc(12px + env(safe-area-inset-top,0px));right:12px;z-index:8;display:none;flex-direction:column;align-items:flex-end;gap:8px}
+  #mbtn{width:42px;height:42px;padding:0;font-size:20px}
+  #mpanel{display:none;flex-direction:column;gap:10px;width:210px;padding:12px 14px;border-radius:16px;background:rgba(0,0,0,.72);
+    border:1px solid #ff6b9a66;color:#ffffffcc;font-size:13px}
+  #mpanel.open{display:flex}
+  #mpanel input[type=range]{width:100%;accent-color:#ff6b9a;margin:0}
+  #mplay{font-size:14px;padding:7px 12px}
+</style>
+</head>
+<body>
+<audio id="bgm" src="Best Friend.mp3" loop preload="auto"></audio>
+
+<div id="intro">
+  <button id="b1">Hoàng nhấn vào đây</button>
+  <div id="step2"><button id="b2">Không sợ mất acc saoo</button><div id="b3">nhấn tiếp</div></div>
+  <label id="pick0" class="pick">♪ Chọn file nhạc (nếu nhạc không tự phát)<input class="mfile" type="file" accept="audio/*" hidden></label>
+</div>
+<canvas id="story"></canvas>
+<button id="skip">Bỏ qua ›</button>
+<div id="hint">Chạm và kéo để xoay 360° ♥</div>
+
+<div id="mus">
+  <button id="mbtn" aria-label="Nhạc">♪</button>
+  <div id="mpanel">
+    <button id="mplay">❚❚ Tạm dừng</button>
+    <label>Âm lượng<input id="vol" type="range" min="0" max="1" step="0.01" value="0.8"></label>
+    <label>Tua nhạc<input id="seek" type="range" min="0" max="1000" step="1" value="0"></label>
+    <label class="pick">♪ Đổi file nhạc<input class="mfile" type="file" accept="audio/*" hidden></label>
+  </div>
+</div>
+
+<!-- Cần mạng để tải three.js. Chạy offline: tải three.min.js về cùng thư mục và đổi src thành "three.min.js" -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  var $ = function(id){ return document.getElementById(id); };
+  var FONT = '"Bradley Hand ITC","Bradley Hand","Segoe Script","Comic Sans MS","Apple Chancery",cursive';
+  var TAU = Math.PI*2;
+
+  /* ============ 3D: MƯA LỜI CHÚC CHÓI LÓA (giữ nguyên) ============ */
+  var WISHES = [
+    "Gửi yêu thương đến Hoàng","Mong cậu luôn có thật nhiều niềm vui","Nhớ chăm sóc bản thân thật tốt nhé","Chỉ mong cậu bình an","Nhớ rằng luôn có người quan tâm cậu nhé","Hạnh phúc là cậu ở đây",
+    "Cảm ơn vì đã đến","Yêu thương không hồi kết","Có tui ở đây nhé!","Nhớ Hoàng 1 chút",
+    "Chúc Hoàng mọi điều may mắn","Hôm nay Hoàng mệt không?",
+    "Hoàng không cần lúc nào cũng mạnh mẽ đâu nè","Mãi yêu, mãi nhớ","Ngọt ngào như hôm nay",
+    "Mọi ước mơ sẽ thành hiện thực",
+    "Forever yours",
+    "Chúc cậu luôn rạng rỡ","Một mai mình vẫn bên nhau","Ôm một cáiii!", "Cậu là người đặc biệt với tui"
+  ];
+
+  var scene = new THREE.Scene();
+  var camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 100);
+  camera.position.set(0, 0, 15);
+  var renderer = new THREE.WebGLRenderer({antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.setClearColor(0x000000, 1);
+  document.body.appendChild(renderer.domElement);
+
+  var world = new THREE.Group(); scene.add(world);
+  world.rotation.set(-0.28, 0.75, 0.12);
+  var W = 13, H = 15, D = 11;
+
+  function glowTex(stops){
+    var c = document.createElement('canvas'); c.width = c.height = 64;
+    var g = c.getContext('2d'), r = g.createRadialGradient(32,32,0,32,32,32);
+    stops.forEach(function(s){ r.addColorStop(s[0], s[1]); });
+    g.fillStyle = r; g.fillRect(0,0,64,64); return new THREE.CanvasTexture(c);
+  }
+
+  // bụi sao lấp lánh
+  var N = 800, pos = new Float32Array(N*3);
+  for (var i=0;i<N;i++){ pos[i*3]=(Math.random()*2-1)*W*1.6; pos[i*3+1]=(Math.random()*2-1)*H; pos[i*3+2]=(Math.random()*2-1)*D*1.6; }
+  var sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  var sm = new THREE.PointsMaterial({size:0.22, map:glowTex([[0,'rgba(255,255,255,1)'],[.3,'rgba(255,255,255,.6)'],[1,'rgba(255,255,255,0)']]),
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending});
+  var stars = new THREE.Points(sg, sm); world.add(stars);
+
+  // lời chúc phát sáng
+  function textTexture(str){
+    var c = document.createElement('canvas'); c.width = 1024; c.height = 256;
+    var g = c.getContext('2d'), size = 96;
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    do { g.font = '400 ' + size + 'px ' + FONT; size -= 4; } while (g.measureText(str).width > 900 && size > 24);
+    g.fillStyle = '#fff'; g.shadowColor = '#fff';
+    [70, 44, 24, 10].forEach(function(b){ g.shadowBlur = b; g.fillText(str, 512, 130); });
+    g.shadowBlur = 0; g.fillText(str, 512, 130);
+    var t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t;
+  }
+  var texCache = WISHES.map(textTexture), texts = [];
+  var planeGeo = new THREE.PlaneGeometry(5.6, 1.4);
+  for (var k=0;k<96;k++){
+    var m = new THREE.MeshBasicMaterial({map:texCache[k % WISHES.length], transparent:true, side:THREE.DoubleSide, depthWrite:false, blending:THREE.AdditiveBlending});
+    var mesh = new THREE.Mesh(planeGeo, m);
+    mesh.position.set((Math.random()*2-1)*W, (Math.random()*2-1)*H, (Math.random()*2-1)*D);
+    var s = 0.65 + Math.random()*0.7; mesh.scale.set(s,s,1);
+    mesh.userData = {v: 0.9 + Math.random()*1.3, ph: Math.random()};
+    world.add(mesh); texts.push(mesh);
+  }
+
+  // trái tim 3D nhỏ rơi cùng chữ
+  var hs = new THREE.Shape();
+  hs.moveTo(-0.12,-0.40); hs.quadraticCurveTo(0,-0.54,0.12,-0.40);
+  hs.bezierCurveTo(0.30,-0.25,0.58,-0.05,0.58,0.20);
+  hs.bezierCurveTo(0.58,0.46,0.30,0.58,0.13,0.40);
+  hs.quadraticCurveTo(0,0.24,-0.13,0.40);
+  hs.bezierCurveTo(-0.30,0.58,-0.58,0.46,-0.58,0.20);
+  hs.bezierCurveTo(-0.58,-0.05,-0.30,-0.25,-0.12,-0.40);
+  var hp = hs.getPoints(40), hn = hp.length - 1, v3 = [];
+  for (var q=0;q<hn;q++) v3.push(new THREE.Vector3(hp[q].x, hp[q].y - 0.05, 0.1*Math.sin(q/hn*TAU*2)));
+  var hc = new THREE.CatmullRomCurve3(v3, true);
+  var coreG = new THREE.TubeGeometry(hc, 160, 0.045, 6, true), glowG = new THREE.TubeGeometry(hc, 100, 0.12, 6, true);
+  var coreM = new THREE.MeshBasicMaterial({color:0xff2a45, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending});
+  var glowM = new THREE.MeshBasicMaterial({color:0xff1030, transparent:true, opacity:0.24, depthWrite:false, blending:THREE.AdditiveBlending});
+  var haloM = new THREE.SpriteMaterial({map:glowTex([[0,'rgba(255,50,90,1)'],[.35,'rgba(255,20,60,.4)'],[1,'rgba(255,0,40,0)']]),
+    transparent:true, depthWrite:false, blending:THREE.AdditiveBlending});
+  var hearts = [];
+  for (var h=0;h<54;h++){
+    var g3 = new THREE.Group();
+    g3.add(new THREE.Mesh(coreG, coreM)); g3.add(new THREE.Mesh(glowG, glowM));
+    var halo = new THREE.Sprite(haloM); halo.scale.setScalar(3.4); g3.add(halo);
+    g3.position.set((Math.random()*2-1)*W, (Math.random()*2-1)*H, (Math.random()*2-1)*D);
+    var base = 0.3 + Math.random()*0.22; g3.scale.setScalar(base);
+    g3.userData = {v: 0.9 + Math.random()*1.3, spin: 0.8 + Math.random()*1.4, base: base, ph: Math.random()*TAU};
+    world.add(g3); hearts.push(g3);
+  }
+
+  // màu chữ: trắng → xanh → hồng → trắng
+  var KEY = [[1,1,1],[0.35,0.7,1],[1,0.45,0.78],[1,1,1]], tmp = new THREE.Color();
+  function cycle(t){
+    t = ((t % 1) + 1) % 1; var f = t*3, i = Math.floor(f), u = f - i; u = u*u*(3-2*u);
+    var a = KEY[i], b = KEY[i+1];
+    return tmp.setRGB(a[0]+(b[0]-a[0])*u, a[1]+(b[1]-a[1])*u, a[2]+(b[2]-a[2])*u);
+  }
+
+  // chạm để xoay 360°
+  var dragging = false, lx = 0, ly = 0, vx = 0, vy = 0, el = renderer.domElement, hint = $('hint');
+  el.addEventListener('pointerdown', function(e){
+    dragging = true; lx = e.clientX; ly = e.clientY; vx = vy = 0;
+    try{ el.setPointerCapture(e.pointerId); }catch(_){}
+    hint.style.opacity = 0;
+  });
+  el.addEventListener('pointermove', function(e){
+    if(!dragging) return;
+    var dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
+    vy = dx*0.008; vx = dy*0.008; world.rotation.y += vy; world.rotation.x += vx;
+  });
+  function up(){ dragging = false; }
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up);
+
+  var clock = new THREE.Clock();
+  (function loop(){
+    requestAnimationFrame(loop);
+    var dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+    if(!dragging){ world.rotation.y += vy; world.rotation.x += vx; vx *= 0.95; vy *= 0.95; }
+    for (var i=0;i<texts.length;i++){
+      var m = texts[i]; m.position.y -= m.userData.v*dt;
+      if (m.position.y < -H) m.position.set((Math.random()*2-1)*W, H, (Math.random()*2-1)*D);
+      m.material.color.copy(cycle(t*0.12 + m.userData.ph*0.15 + (m.position.y/H)*0.06));
+    }
+    for (var j=0;j<hearts.length;j++){
+      var p = hearts[j]; p.position.y -= p.userData.v*dt;
+      p.rotation.y += p.userData.spin*dt;
+      p.scale.setScalar(p.userData.base*(1 + 0.07*Math.sin(t*3 + p.userData.ph)));
+      if (p.position.y < -H) p.position.set((Math.random()*2-1)*W, H, (Math.random()*2-1)*D);
+    }
+    sm.size = 0.2 + Math.sin(t*3)*0.06; sm.opacity = 0.75 + Math.sin(t*2.3)*0.25; stars.rotation.y = t*0.02;
+    renderer.render(scene, camera);
+  })();
+
+  /* ============ NHẠC ============ */
+  var bgm = $('bgm'), musicOn = false;
+  function playMusic(){ var p = bgm.play(); if (p && p.catch) p.catch(function(){}); }
+  function startMusic(){                       // chỉ chạy 1 lần
+    if (musicOn) return; musicOn = true;
+    bgm.muted = false; $('mus').style.display = 'flex'; playMusic();
+  }
+  [].forEach.call(document.querySelectorAll('.mfile'), function(inp){
+    inp.addEventListener('change', function(e){
+      var f = e.target.files[0]; if(!f) return;
+      bgm.src = URL.createObjectURL(f); musicOn = true; bgm.muted = false; $('mus').style.display = 'flex'; playMusic();
+    });
+  });
+  bgm.volume = 0.8;
+  $('vol').addEventListener('input', function(e){ bgm.volume = +e.target.value; });
+  $('seek').addEventListener('input', function(e){ if (bgm.duration) bgm.currentTime = bgm.duration*e.target.value/1000; });
+  bgm.addEventListener('timeupdate', function(){ if (bgm.duration && document.activeElement !== $('seek')) $('seek').value = bgm.currentTime/bgm.duration*1000; });
+  bgm.addEventListener('play',  function(){ $('mplay').textContent = '❚❚ Tạm dừng'; });
+  bgm.addEventListener('pause', function(){ $('mplay').textContent = '▶ Phát nhạc'; });
+  $('mplay').addEventListener('click', function(){ bgm.paused ? playMusic() : bgm.pause(); });
+  $('mbtn').addEventListener('click', function(){ $('mpanel').classList.toggle('open'); });
+
+  /* ============ MỞ ĐẦU: NÚT → TRÁI TIM PHÁT SÁNG → NỔ TUNG → MƯA LỜI CHÚC ============ */
+  var T_HEART = 6.0;       // trái tim lấp lánh bao nhiêu giây thì nổ
+  var MUSIC_DELAY = 1.0;   // nhạc bắt đầu sau lúc nổ bao nhiêu giây (0 = cùng lúc nổ)
+  var T_BOOM = T_HEART, T_END = T_BOOM + 1.6;
+
+  var intro = $('intro'), st = $('story'), sx = st.getContext('2d'), skip = $('skip');
+  var SW = innerWidth, SH = innerHeight, storyOn = false, t0 = 0, lastNow = 0;
+  var booming = false, parts = [], flashT = 0, HS = 1, CXp = 0, CYp = 0, heartPts = [], sparkles = [];
+
+  function sizeStory(){
+    var d = Math.min(devicePixelRatio ||1, 2); SW = document.documentElement.clientWidth || innerWidth; SH = document.documentElement.clientHeight || innerHeight;
+    st.style.width = SW + 'px'; st.style.height = SH + 'px'; st.width = Math.round(SW * d); st.height = Math.round(SH * d); sx.setTransform(1,0,0,1,0,0); sx.scale(d, d);
+  }
+  sizeStory();
+  addEventListener('resize', function(){
+    camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
+    sizeStory(); if (storyOn) layout();
+  });
+
+  $('b1').addEventListener('click', function(){ $('b1').style.display = 'none'; $('step2').style.display = 'flex'; });
+
+  function startStory(){
+    // "mở khoá" âm thanh ngay lúc người dùng bấm, để lát nữa nhạc tự phát được
+    if (!musicOn){
+      bgm.muted = true; var pr = bgm.play();
+      if (pr && pr.then) pr.then(function(){ if (!musicOn){ bgm.pause(); bgm.currentTime = 0; } bgm.muted = false; })
+                          .catch(function(){ bgm.muted = false; });
+    }
+    intro.style.display = 'none'; st.style.display = 'block'; st.style.background = '#000'; skip.style.display = 'block';
+    booming = false; parts = []; flashT = 0;
+    sizeStory(); layout(); storyOn = true; t0 = performance.now(); lastNow = t0; requestAnimationFrame(storyLoop);
+  }
+  $('b2').addEventListener('click', startStory); $('b3').addEventListener('click', startStory);
+
+  function endStory(){
+    storyOn = false; st.style.display = 'none'; skip.style.display = 'none';
+    startMusic();                                   // bấm "Bỏ qua" thì nhạc phát luôn
+    hint.style.opacity = 1; setTimeout(function(){ hint.style.opacity = 0; }, 7000);
+  }
+  skip.addEventListener('click', endStory);
+
+  function clamp(x){ return Math.max(0, Math.min(1, x)); }
+  function ease(x){ return x*x*(3-2*x); }
+
+  // hình trái tim 3D bo tròn (theo ảnh mẫu): lấy mẫu từ các đường cong Bezier (toạ độ ảnh mẫu, tâm x = 422)
+  function bez(a,b,c,d,t){ var u = 1-t;
+    return [u*u*u*a[0]+3*u*u*t*b[0]+3*u*t*t*c[0]+t*t*t*d[0], u*u*u*a[1]+3*u*u*t*b[1]+3*u*t*t*c[1]+t*t*t*d[1]]; }
+  var HR = [
+    [[422,283],[470,238],[520,213],[590,213]],
+    [[590,213],[690,213],[755,300],[755,400]],
+    [[755,400],[755,540],[520,730],[450,785]],
+    [[450,785],[434,797],[410,797],[394,785]]
+  ];
+  var HL = HR.slice(0,3).reverse().map(function(sg){ return sg.slice().reverse().map(function(q){ return [844-q[0], q[1]]; }); });
+  var HSEG = HR.concat(HL);
+
+  function layout(){
+    HS = Math.min(SW*0.50, SH*0.37)/32; CXp = SW/2; CYp = SH/2;
+    heartPts = [];
+    HSEG.forEach(function(sg){
+      for (var i=0;i<24;i++){
+        var q = bez(sg[0], sg[1], sg[2], sg[3], i/24);
+        heartPts.push([(q[0]-422)*32/665, (q[1]-503)*32/665]);
+      }
+    });
+    sparkles = [];
+    for (var k=0;k<60;k++){
+      var P = heartPts[Math.floor(Math.random()*heartPts.length)], o = 0.55 + Math.random()*0.85;
+      sparkles.push({x: P[0]*o, y: P[1]*o, ph: Math.random()*TAU, sp: 2.5 + Math.random()*4, r: 0.8 + Math.random()*2.2});
+    }
+  }
+
+  function heartPath(sc){
+    sx.beginPath();
+    for (var i=0;i<heartPts.length;i++){
+      var x = CXp + heartPts[i][0]*HS*sc, y = CYp + heartPts[i][1]*HS*sc;
+      i ? sx.lineTo(x,y) : sx.moveTo(x,y);
+    }
+    sx.closePath();
+  }
+
+  // vẽ trái tim 3D bóng: nền đỏ có chiều sâu + vệt sáng hồng + viền tối mềm
+  function blob(cx,cy,rx,ry,col,a){
+    sx.save(); sx.translate(cx,cy); sx.scale(1, ry/rx);
+    var r = sx.createRadialGradient(0,0,0,0,0,rx);
+    r.addColorStop(0, 'rgba(' + col + ',' + a + ')'); r.addColorStop(1, 'rgba(' + col + ',0)');
+    sx.fillStyle = r; sx.beginPath(); sx.arc(0,0,rx,0,TAU); sx.fill(); sx.restore();
+  }
+  function drawHeart3D(sc, ap, glow, tension){
+    var X = CXp, Y = CYp, U = HS*sc;
+    sx.save(); sx.globalAlpha = ap;
+    heartPath(sc); sx.shadowColor = '#ff1733'; sx.shadowBlur = glow*2; sx.fillStyle = '#e8132a'; sx.fill(); sx.shadowBlur = 0;
+    heartPath(sc); sx.clip();
+    var g = sx.createRadialGradient(X-3*U, Y-4*U, 1, X, Y+U, 19*U);
+    g.addColorStop(0, '#ff4d5c'); g.addColorStop(.45, '#f01c30'); g.addColorStop(.8, '#dc0a1c'); g.addColorStop(1, '#a80012');
+    sx.fillStyle = g; sx.fillRect(X-20*U, Y-20*U, 40*U, 40*U);
+    blob(X-7.8*U, Y-6.5*U, 7*U, 4.6*U, '255,140,140', .75);    // vệt sáng thùy trái
+    blob(X+7.8*U, Y-5.5*U, 8*U, 4.6*U, '255,110,150', .6);     // vệt sáng thùy phải
+    blob(X, Y+9*U, 7*U, 4*U, '255,100,110', .4);               // ánh sáng nhẹ phía dưới
+    blob(X-8.5*U, Y-8*U, 3*U, 1.6*U, '255,255,255', .5);       // điểm bóng loáng
+    if (tension > 0){ sx.fillStyle = 'rgba(255,255,255,' + 0.28*tension*tension + ')'; sx.fillRect(X-20*U, Y-20*U, 40*U, 40*U); }
+    sx.restore();
+  }
+  function glint(x, y, r, al){                                  // tia sáng lấp lánh 4 cánh
+    sx.globalAlpha = al; sx.fillStyle = '#fff'; sx.shadowColor = '#fff'; sx.shadowBlur = 12;
+    sx.beginPath(); sx.moveTo(x, y-r);
+    sx.quadraticCurveTo(x, y, x+r, y); sx.quadraticCurveTo(x, y, x, y+r);
+    sx.quadraticCurveTo(x, y, x-r, y); sx.quadraticCurveTo(x, y, x, y-r);
+    sx.fill();
+  }
+
+  function explode(){
+    var COL = ['#ffffff','#ffffff','#ffffff','#ffffff','#ff1744','#ff3b62'];
+    for (var i=0;i<1000;i++){
+      var P = heartPts[Math.floor(Math.random()*heartPts.length)], r = Math.sqrt(Math.random());
+      var px = P[0]*r, py = P[1]*r, a = Math.atan2(py, px) + (Math.random()-0.5)*0.9, sp = 160 + Math.random()*620;
+      parts.push({x: CXp + px*HS, y: CYp + py*HS, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp - 40,
+        life: 0.9 + Math.random()*0.9, age: 0, r: 0.5 + Math.random()*1.7, c: COL[Math.floor(Math.random()*COL.length)]});
+    }
+    flashT = 0;
+  }
+
+  function storyLoop(now){
+    if (!storyOn) return;
+    var t = (now - t0)/1000, dt = Math.min((now - lastNow)/1000, 0.05); lastNow = now;
+    sx.clearRect(0,0,SW,SH); sx.lineCap = 'round'; sx.lineJoin = 'round';
+
+    if (t < T_BOOM){
+      // --- trái tim 3D đỏ phát sáng, đập nhịp, lấp lánh ---
+      var ap = ease(clamp(t/0.6)), tension = clamp((t - (T_BOOM - 0.8))/0.8);
+      var sc = ap*(1 + 0.045*Math.sin(t*7) + 0.10*tension*tension);
+      var glow = 18 + Math.sin(t*5)*6 + tension*26;
+      drawHeart3D(sc, ap, glow, tension);
+      for (var i=0;i<sparkles.length;i++){
+        var sp = sparkles[i], al = Math.max(0, Math.sin(t*sp.sp + sp.ph))*ap;
+        if (al < 0.08) continue;
+        glint(CXp + sp.x*HS*sc, CYp + sp.y*HS*sc, sp.r*3.2*(0.5 + al*0.7), al);
+      }
+      sx.globalAlpha = 1; sx.shadowBlur = 0;
+    } else {
+      // --- NỔ TUNG: nền đen biến mất ngay, lộ mưa lời chúc bên dưới ---
+      if (!booming){ booming = true; st.style.background = 'transparent'; explode(); }
+      flashT += dt;
+      if (flashT < 0.4){                                         // tia chớp + vòng sóng xung kích
+        var f = flashT/0.4, rr = HS*34*ease(f);
+        var fg = sx.createRadialGradient(CXp, CYp, 0, CXp, CYp, rr + 1);
+        fg.addColorStop(0, 'rgba(255,255,255,' + 0.85*(1-f) + ')'); fg.addColorStop(1, 'rgba(255,60,110,0)');
+        sx.fillStyle = fg; sx.beginPath(); sx.arc(CXp, CYp, rr, 0, TAU); sx.fill();
+        sx.globalAlpha = 1 - f; sx.strokeStyle = '#ffd0dc'; sx.lineWidth = 3;
+        sx.shadowColor = '#ff1744'; sx.shadowBlur = 16;
+        sx.beginPath(); sx.arc(CXp, CYp, HS*40*ease(f), 0, TAU); sx.stroke();
+        sx.globalAlpha = 1; sx.shadowBlur = 0;
+      }
+      for (var n=0;n<parts.length;n++){                          // các hạt bay tản ra
+        var p = parts[n]; p.age += dt; if (p.age >= p.life) continue;
+        p.vx *= 0.985; p.vy = p.vy*0.985 + 260*dt;
+        p.x += p.vx*dt; p.y += p.vy*dt;
+        var k2 = 1 - p.age/p.life;
+        sx.globalAlpha = k2; sx.fillStyle = p.c; sx.shadowColor = p.c; sx.shadowBlur = 8;
+        sx.beginPath(); sx.arc(p.x, p.y, p.r*(0.5 + k2*0.5), 0, TAU); sx.fill();
+      }
+      sx.globalAlpha = 1; sx.shadowBlur = 0;
+      if (t >= T_BOOM + MUSIC_DELAY) startMusic();               // nhạc vào sau lúc nổ 1 giây
+    }
+    if (t > T_END){ endStory(); return; }
+    requestAnimationFrame(storyLoop);
+  }
+})();
+</script>
+</body>
+</html>
